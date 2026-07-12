@@ -243,47 +243,177 @@ mba-ia-pull-evaluation-prompt/
 - `datasets/bug_to_user_story.jsonl` — Dataset com 15 bugs (5 simples, 7 médios, 3 complexos)
 - Suporte multi-provider (OpenAI e Gemini)
 
-## Repositórios úteis
+---
 
-- [Repositório boilerplate do desafio](https://github.com/devfullcycle/mba-ia-prompt-engineering)
-- [LangSmith Documentation](https://docs.smith.langchain.com/)
-- [Prompt Engineering Guide](https://www.promptingguide.ai/)
+## Técnicas Aplicadas
 
-## VirtualEnv para Python
+O prompt otimizado está em [`prompts/bug_to_user_story_v2.yml`](prompts/bug_to_user_story_v2.yml). Técnicas aplicadas e por quê:
 
-Crie e ative um ambiente virtual antes de instalar dependências:
+### 1. Few-shot Learning (obrigatória)
+
+O system prompt inclui **6 exemplos completos de entrada/saída** (seção `## EXEMPLOS (FEW-SHOT)`): 2 bugs simples, 3 médios e 1 complexo. Cada exemplo mostra o relato de bug e a user story esperada no formato exato de cada nível de complexidade, ancorando a granularidade da resposta.
+
+**Decisão consciente:** os exemplos foram **inventados**, e não copiados do dataset de avaliação (`datasets/bug_to_user_story.jsonl`), para manter o prompt genuinamente generalizável em vez de "decorado" para os 15 casos avaliados.
+
+### 2. Chain of Thought (CoT)
+
+A seção `## SEU PROCESSO DE RACIOCÍNIO` instrui o modelo a raciocinar **internamente** em 5 passos antes de escrever (validar o relato → classificar complexidade → identificar persona/ação/valor → escolher seções → redigir), com a instrução explícita de nunca expor o raciocínio na resposta final. Isso melhora a consistência da classificação sem poluir a saída.
+
+### 3. Role Prompting
+
+O prompt abre definindo a persona: _"Você é um Product Manager Sênior atuando como Product Owner de um produto digital"_. Isso alinha tom, vocabulário e o foco em valor de negócio das user stories.
+
+### Técnicas complementares
+
+- **Tratamento de edge cases** (`## VALIDAÇÕES INICIAIS`): regras concretas para relato vago/insuficiente, feature request disfarçada de bug, prompt injection/fora de escopo, dados sensíveis (redação com `[REDACTED]`), múltiplos bugs num só relato (uma story numerada por bug) e entrada em outro idioma.
+- **Formato BDD/Gherkin**: critérios de aceitação sempre em "Dado que / Quando / Então / E", com estrutura de saída adaptativa por complexidade (simples, médio e complexo com seções `=== ... ===`).
+- **Classificação objetiva de complexidade**: limiares concretos (nº de frases, presença de logs/HTTP/queries, nº de problemas, impacto de negócio) em vez de julgamento aberto, reduzindo variância entre execuções.
+- **Extração ativa de detalhes** (Regra Fundamental #9): contrapeso às regras anti-alucinação — o modelo é instruído a extrair ativamente cada valor concreto do relato (números, IDs, endpoints, estados, navegadores) para maximizar o recall na métrica F1.
+
+---
+
+## Resultados Finais
+
+### Scores v1 vs v2
+
+| Métrica     | v1 (baseline) | v2 (otimizado) |
+| ----------- | ------------- | -------------- |
+| Helpfulness | ~0.45         | **0.87** ✓     |
+| Correctness | ~0.52         | **0.83** ✓     |
+| F1-Score    | ~0.48         | **0.80** ✓     |
+| Clarity     | ~0.50         | **0.88** ✓     |
+| Precision   | ~0.46         | **0.86** ✓     |
+| **Média**   | ~0.48         | **0.8495** ✓   |
+
+### Terminal da avaliação final
+
+```
+==================================================
+AVALIAÇÃO DE PROMPTS OTIMIZADOS
+==================================================
+
+Provider: openai
+Modelo Principal: gpt-4o-mini
+Modelo de Avaliação: gpt-4o
+
+==================================================
+Prompt: anderson-suga/bug_to_user_story_v2
+==================================================
+
+Métricas Derivadas:
+  - Helpfulness: 0.87 ✓
+  - Correctness: 0.83 ✓
+
+Métricas Base:
+  - F1-Score: 0.80 ✓
+  - Clarity: 0.88 ✓
+  - Precision: 0.86 ✓
+
+--------------------------------------------------
+📊 MÉDIA GERAL: 0.8495
+--------------------------------------------------
+
+✅ STATUS: APROVADO - Todas as métricas >= 0.8
+
+==================================================
+RESUMO FINAL
+==================================================
+
+Prompts avaliados: 1
+Aprovados: 1
+Reprovados: 0
+
+✅ Todos os prompts atingiram todas as métricas >= 0.8!
+```
+
+### Per-exemplo (15/15 cobertos)
+
+| #   | F1   | Clarity | Precision |
+| --- | ---- | ------- | --------- |
+| 1   | 0.75 | 0.90    | 0.90      |
+| 2   | 0.75 | 0.90    | 0.90      |
+| 3   | 0.82 | 0.90    | 0.90      |
+| 4   | 0.62 | 0.85    | 0.67      |
+| 5   | 0.75 | 0.90    | 0.90      |
+| 6   | 0.85 | 0.90    | 1.00      |
+| 7   | 0.90 | 0.90    | 1.00      |
+| 8   | 0.75 | 0.90    | 0.90      |
+| 9   | 1.00 | 0.95    | 1.00      |
+| 10  | 0.75 | 0.90    | 0.90      |
+| 11  | 0.80 | 0.90    | 0.80      |
+| 12  | 0.69 | 0.75    | 0.67      |
+| 13  | 0.85 | 0.90    | 1.00      |
+| 14  | 0.80 | 0.80    | 0.67      |
+| 15  | 1.00 | 0.90    | 0.67      |
+
+### Evidências
+
+**Resultado da avaliação (terminal):**
+
+![Resultado da avaliação - todas as métricas >= 0.8](screenshots/result.png)
+
+**Dashboard do LangSmith — projeto, dataset e traces:**
+
+![Dashboard do LangSmith com projeto, dataset de 15 exemplos e traces](screenshots/dashboard.png)
+
+**Links públicos:**
+
+- **Prompt v2 público no Hub:** [anderson-suga/bug_to_user_story_v2](https://smith.langchain.com/prompts/bug_to_user_story_v2)
+- **Prompt v1 original:** [leonanluppi/bug_to_user_story_v1](https://smith.langchain.com/prompts/bug_to_user_story_v1)
+
+---
+
+## Como Executar
+
+### Pré-requisitos
+
+- **Python 3.9 a 3.13** (⚠️ o Python 3.14 não funciona: o `pydantic-core` pinado no `requirements.txt` não compila nele)
+- Conta no [LangSmith](https://smith.langchain.com/) com API key
+- API key da OpenAI (recomendado) ou do Google Gemini
+- **Handle no LangSmith Hub** (passo único): antes do primeiro push, publique qualquer prompt manualmente pela UI em https://smith.langchain.com/prompts — sem isso, `push_prompts.py` falha ao publicar como público. É também aí que você descobre seu `USERNAME_LANGSMITH_HUB`.
+
+### Setup
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # No Windows: venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env
+# edite o .env com suas credenciais
 ```
 
----
+Configuração recomendada no `.env`:
 
-## Ordem de execução
+```dotenv
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=<sua-chave>
+LANGSMITH_PROJECT=<nome-do-projeto>
+USERNAME_LANGSMITH_HUB=<seu-username>
+OPENAI_API_KEY=<sua-chave>
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+EVAL_MODEL=gpt-4o
+```
 
-### 1. Executar pull dos prompts ruins
+### Pipeline
 
 ```bash
+# 1. Pull do prompt baseline (leonanluppi/bug_to_user_story_v1)
 python src/pull_prompts.py
-```
 
-### 2. Refatorar prompts
-
-Edite manualmente o arquivo `prompts/bug_to_user_story_v2.yml` aplicando as técnicas aprendidas no curso.
-
-### 3. Fazer push dos prompts otimizados
-
-```bash
+# 2. Push do prompt otimizado (público) para {seu_username}/bug_to_user_story_v2
 python src/push_prompts.py
-```
 
-### 4. Executar avaliação
-
-```bash
+# 3. Avaliação contra o dataset de 15 exemplos (5 métricas, mínimo 0.8 em todas)
 python src/evaluate.py
+
+# 4. Testes de validação do prompt
+pytest tests/test_prompts.py -v
 ```
+
+Ao iterar no prompt: edite `prompts/bug_to_user_story_v2.yml`, repita o push (passo 2) e reavalie (passo 3) até todas as métricas ficarem ≥ 0.8.
+
+**Custo estimado:** ~$1–5 com OpenAI para o desafio completo. Com Gemini free tier (15 req/min), uma rodada de avaliação faz ~60 chamadas e vai esbarrar em rate limit — prefira OpenAI ou re-execute até obter uma rodada limpa.
 
 ---
 
@@ -297,7 +427,7 @@ python src/evaluate.py
 
 **2. README.md deve conter:**
 
-**A) Seção "Técnicas Aplicadas (Fase 2)":**
+**A) Seção "Técnicas Aplicadas":**
 
 - Quais técnicas avançadas você escolheu para refatorar os prompts
 - Justificativa de por que escolheu cada técnica
@@ -322,6 +452,14 @@ python src/evaluate.py
   - Dataset de avaliação com 15 exemplos
   - Execuções dos prompts v2 (otimizados) com notas ≥ 0.8
   - Tracing detalhado de pelo menos 3 exemplos
+
+---
+
+## Repositórios úteis
+
+- [Repositório boilerplate do desafio](https://github.com/devfullcycle/mba-ia-prompt-engineering)
+- [LangSmith Documentation](https://docs.smith.langchain.com/)
+- [Prompt Engineering Guide](https://www.promptingguide.ai/)
 
 ---
 
